@@ -59,6 +59,18 @@ const init = async () => {
   const widget = ARGS.web_widget ? ARGS.web_widget === "true" : true;
   const theme = ["light", "dark"].includes(ARGS.web_theme) ? ARGS.web_theme : "dark";
   const zoom = (!isNaN(parseFloat(ARGS.web_zoom)) ? parseFloat(ARGS.web_zoom) : 1.25) * 100;
+  const paddingRaw = (ARGS.web_padding ?? "0").toString().trim();
+  const paddingParts = paddingRaw
+    .split(",")
+    .map((v) => parseInt(v.trim(), 10))
+    .filter((v) => !isNaN(v));
+  const p = (v) => Math.max(0, v);
+  const padding =
+    paddingParts.length === 1
+      ? { top: p(paddingParts[0]), right: p(paddingParts[0]), bottom: p(paddingParts[0]), left: p(paddingParts[0]) }
+      : paddingParts.length === 4
+        ? { top: p(paddingParts[0]), right: p(paddingParts[1]), bottom: p(paddingParts[2]), left: p(paddingParts[3]) }
+        : { top: 0, right: 0, bottom: 0, left: 0 };
   const urls = [loaderHtml(40, 1.0, theme), ...ARGS.web_url];
 
   // Init global controls
@@ -217,6 +229,11 @@ const init = async () => {
   console.info(`Open Window: ${width}x${height}+${x}+${y}`);
   WEBVIEW.theme.init(theme, updateTheme);
   WEBVIEW.zoom.init(zoom, updateZoom);
+
+  // Overscan compensation padding (px). Supports:
+  // - "25" (all sides)
+  // - "top,right,bottom,left" (4 values)
+  WEBVIEW.padding = padding;
 
   // Register global events
   await windowEvents();
@@ -471,6 +488,7 @@ const toggleNavigation = (force = null) => {
   const window = WEBVIEW.window.getBounds();
   const status = WEBVIEW.status.getBounds();
   const navigation = WEBVIEW.navigation.getBounds();
+  const pad = WEBVIEW.padding || { top: 0, right: 0, bottom: 0, left: 0 };
 
   // Calculate navigation height
   const height = force === "ON" ? 50 : force === "OFF" ? 0 : navigation.height > 0 ? 0 : 50;
@@ -478,11 +496,18 @@ const toggleNavigation = (force = null) => {
     return;
   }
 
+  const inner = {
+    x: pad.left,
+    y: pad.top,
+    width: Math.max(0, window.width - pad.left - pad.right),
+    height: Math.max(0, window.height - pad.top - pad.bottom),
+  };
+
   // Show or hide navigation based on height
   WEBVIEW.navigation.setBounds({
-    x: 0,
-    y: window.height - status.height - height,
-    width: window.width,
+    x: inner.x,
+    y: inner.y + inner.height - height,
+    width: inner.width,
     height: height,
   });
 
@@ -501,6 +526,7 @@ const toggleStatus = (force = null) => {
   }
   const window = WEBVIEW.window.getBounds();
   const status = WEBVIEW.status.getBounds();
+  const pad = WEBVIEW.padding || { top: 0, right: 0, bottom: 0, left: 0 };
 
   // Calculate status height
   const height = force === "ON" ? 40 : force === "OFF" ? 0 : status.height > 0 ? 0 : 40;
@@ -508,11 +534,18 @@ const toggleStatus = (force = null) => {
     return;
   }
 
+  const inner = {
+    x: pad.left,
+    y: pad.top,
+    width: Math.max(0, window.width - pad.left - pad.right),
+    height: Math.max(0, window.height - pad.top - pad.bottom),
+  };
+
   // Show or hide status based on height
   WEBVIEW.status.setBounds({
-    x: 0,
-    y: 0,
-    width: window.width,
+    x: inner.x,
+    y: inner.y,
+    width: inner.width,
     height: height,
   });
 
@@ -652,27 +685,45 @@ const resizeView = () => {
   const window = WEBVIEW.window.getBounds();
   const status = WEBVIEW.status.getBounds();
   const navigation = WEBVIEW.navigation.getBounds();
+  const pad = WEBVIEW.padding || { top: 0, right: 0, bottom: 0, left: 0 };
+
   const pager = { width: 20, height: window.height };
   const widget = { width: 60, height: 200 };
+
+  // Safe area inside the monitor (overscan compensation)
+  const inner = {
+    x: pad.left,
+    y: pad.top,
+    width: Math.max(0, window.width - pad.left - pad.right),
+    height: Math.max(0, window.height - pad.top - pad.bottom),
+  };
+
+  // Content area between status and navigation within the safe area
+  const content = {
+    x: inner.x,
+    y: inner.y + status.height,
+    width: inner.width,
+    height: Math.max(0, inner.height - status.height - navigation.height),
+  };
 
   // Update view size
   WEBVIEW.views.forEach((view, i) => {
     console.debug(`webview.js: resizeView(${i})`);
     view.setBounds({
-      x: 0,
-      y: status.height,
-      width: window.width,
-      height: window.height - status.height - navigation.height,
+      x: content.x,
+      y: content.y,
+      width: content.width,
+      height: content.height,
     });
   });
 
   // Update pager size
   if (WEBVIEW.pagerEnabled) {
     WEBVIEW.pager.setBounds({
-      x: window.width - pager.width,
-      y: status.height,
+      x: content.x + content.width - pager.width,
+      y: content.y,
       width: pager.width,
-      height: pager.height - status.height - navigation.height,
+      height: content.height,
     });
     WEBVIEW.pager.webContents.send("data-theme", {
       theme: WEBVIEW.viewUrls.length > 2 ? WEBVIEW.pagerTheme : "hidden",
@@ -681,9 +732,10 @@ const resizeView = () => {
 
   // Update widget size
   if (WEBVIEW.widgetEnabled) {
+    const dockWidth = WEBVIEW.tracker.widget.focused ? widget.width : pager.width;
     WEBVIEW.widget.setBounds({
-      x: WEBVIEW.tracker.widget.focused ? window.width - widget.width : window.width - pager.width,
-      y: status.height + parseInt((window.height - status.height - widget.height) / 2, 10),
+      x: content.x + content.width - dockWidth,
+      y: content.y + parseInt((content.height - widget.height) / 2, 10),
       width: widget.width,
       height: widget.height,
     });
@@ -695,9 +747,9 @@ const resizeView = () => {
   // Update status size
   if (WEBVIEW.statusEnabled) {
     WEBVIEW.status.setBounds({
-      x: 0,
-      y: 0,
-      width: window.width,
+      x: inner.x,
+      y: inner.y,
+      width: inner.width,
       height: status.height,
     });
     WEBVIEW.status.webContents.send("data-theme", {
@@ -708,9 +760,9 @@ const resizeView = () => {
   // Update navigation size
   if (WEBVIEW.navigationEnabled) {
     WEBVIEW.navigation.setBounds({
-      x: 0,
-      y: window.height - navigation.height,
-      width: window.width,
+      x: inner.x,
+      y: inner.y + inner.height - navigation.height,
+      width: inner.width,
       height: navigation.height,
     });
     WEBVIEW.navigation.webContents.send("data-theme", {
@@ -854,8 +906,9 @@ const widgetEvents = async () => {
     const widget = WEBVIEW.widget.getBounds();
 
     // Show widget
+    const pad = WEBVIEW.padding || { top: 0, right: 0, bottom: 0, left: 0 };
     WEBVIEW.widget.setBounds({
-      x: window.width - 60,
+      x: window.width - pad.right - 60,
       y: widget.y,
       width: widget.width,
       height: widget.height,
@@ -873,8 +926,9 @@ const widgetEvents = async () => {
     const widget = WEBVIEW.widget.getBounds();
 
     // Hide widget
+    const pad = WEBVIEW.padding || { top: 0, right: 0, bottom: 0, left: 0 };
     WEBVIEW.widget.setBounds({
-      x: window.width - 20,
+      x: window.width - pad.right - 20,
       y: widget.y,
       width: widget.width,
       height: widget.height,
