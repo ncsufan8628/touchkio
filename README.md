@@ -63,7 +63,7 @@ After the first login the Home Assistant credentials are stored inside the `~/.c
 Run this command to download and install the latest **.deb** (arm64 or x64) release.
 It will also create a systemd user file for auto-startup and will guide you through the setup process:
 ```bash
-bash <(wget -qO- https://raw.githubusercontent.com/leukipp/touchkio/main/install.sh)
+bash <(wget -qO- https://raw.githubusercontent.com/ncsufan8628/touchkio/main/install.sh)
 ```
 Make sure that you run this with your **standard user** and not with root (sudo).
 If you are paranoid, or smart, or both, have a look into the [install.sh](https://github.com/leukipp/touchkio/blob/main/install.sh) script before executing external code on your machine.
