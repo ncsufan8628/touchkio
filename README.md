@@ -9,6 +9,8 @@
 This tool is packaged as a **.deb** file, making it easy to launch the kiosk application on any Debian based Linux [hardware](https://github.com/leukipp/touchkio/blob/main/HARDWARE.md) (e.g. **Raspberry Pi**) equipped with a **DSI or HDMI** Touch Display.
 Additional releases for other Linux systems are available as **.zip** file.
 
+**This fork includes a modification to allow for additional padding to be added to the kiosk display to compensate for the broken overscan features in Pi & Wayland.  It is especially useful if you mount your kiosk display with in a frame, where the raised edge prevents tapping the screen's outter most regions.**  To utilize, either add --web_padding=##, --web_padding=top,right,bottom,left at run, or add "web_padding": "##" or "web_padding": "top, right, bottom, left" to Arguements.json
+
 [![display](https://raw.githubusercontent.com/leukipp/touchkio/main/img/display.png)](https://github.com/leukipp/touchkio/blob/main/img/display.png)
 
 This implementation addresses common issues encountered when using the built-in browser running in fullscreen mode on a Linux device with Touch Display.
